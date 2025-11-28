@@ -78,9 +78,8 @@ class OcrController extends Controller
         $text = $parsed['ParsedText'] ?? '';
         $lines = $parsed['TextOverlay']['Lines'] ?? [];
 
-        // Extract fields smartly
         $extractedFields = [
-            'merchant_name' => strtok($text, "\n"),
+            'brand_name' => strtok($text, "\n"),
             'date' => $this->getMatch('/\d{4}[-\/.]\d{2}[-\/.]\d{2}/', $text),
             'phone' => $this->getMatch('/\+?[0-9\s]{8,15}/', $text),
             'email' => $this->getMatch('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', $text),
@@ -103,7 +102,6 @@ class OcrController extends Controller
             }
         }
 
-        // Save everything to session
         session([
             'text' => $text,
             'raw'  => $result,
