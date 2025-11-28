@@ -30,10 +30,56 @@
         @include('components.ocr.viewer')
 
         <section class="flex-1 px-5 border-l border-[#f1f1f1]">
+
+            {{-- FILE NAME HEADER --}}
+            <div class="flex items-center justify-between text-[14px] font-semibold mt-3 mb-4">
+                <p>
+                    {{ $fileName ?? 'No file selected' }}
+                    <span class="text-[8px] ml-1 px-[6px] py-[4px] rounded-full
+                bg-[rgb(255,234,167)] text-orange-500">
+                        {{ isset($text) ? 'Processed' : 'Pending' }}
+                    </span>
+                </p>
+            </div>
+
+            {{-- BUTTONS --}}
+            <div class="flex gap-2 items-center mb-4">
+                <form action="{{ route('ocr.extract') }}" method="POST">
+                    @csrf
+                    <input type="hidden" name="selectedFile" value="{{ $selected }}">
+
+                    <button type="submit"
+                        class="px-3 py-[6px] rounded-full bg-black text-white text-[13px] font-semibold">
+                        Data Extraction
+                    </button>
+                </form>
+
+                <button onclick="toggleJson()"
+                    class="px-3 py-[6px] rounded-[5px] bg-[#f8f7f7] text-[13px] text-[#575656] font-semibold border border-[#e6e5e5]">
+                    JSON Response
+                </button>
+            </div>
+
+            {{-- EXTRACTED FIELDS --}}
             @include('components.ocr.fields', ['extractedFields' => $extractedFields ?? []])
+
+            {{-- LINE ITEMS --}}
             @include('components.ocr.line-items', ['lineItems' => $lineItems ?? []])
-            @include('components.ocr.raw')
+
+            {{-- RAW JSON --}}
+            <div id="jsonBox" class="hidden">
+                @include('components.ocr.raw')
+            </div>
+
         </section>
+
+        <script>
+            function toggleJson() {
+                const box = document.getElementById("jsonBox");
+                box.classList.toggle("hidden");
+            }
+        </script>
+
     </main>
     <script>
         let zoomLevel = 1;

@@ -7,86 +7,115 @@ use Illuminate\Support\Facades\Http;
 
 class OcrController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $files = session('ocr_files') ?? [];
+        $selected = $request->selectedFile ?? session('selectedFile') ?? 0;
+
+        session(['selectedFile' => $selected]);
+
         return view('ocr', [
-            'uploadedImage' => null,
-            'fileName' => null,
-            'text' => null,
-            'extractedFields' => [],
-            'lineItems' => [],
-            'raw' => null,
+            'uploadedImage' => $files[$selected]['path'] ?? null,
+            'fileName' => $files[$selected]['filename'] ?? null,
+            'text' => session('text'),
+            'extractedFields' => session('extractedFields') ?? [],
+            'lineItems' => session('lineItems') ?? [],
+            'raw' => session('raw') ?? null,
+            'selected' => $selected,
         ]);
     }
 
-
-    public function process(Request $request)
+    public function upload(Request $request)
     {
         $request->validate([
-            'image' => 'required|file|mimes:jpg,jpeg,png,bmp,gif,tif,tiff,webp,pdf|max:4096',
+            'images.*' => 'required|file|mimes:jpg,jpeg,png,bmp,gif,tif,tiff,webp,pdf|max:4096'
         ]);
 
-        // Store for preview
-        $path = $request->file('image')->store('uploads', 'public');
-        $uploadedImage = asset('storage/' . $path);
-        $fileName = $request->file('image')->getClientOriginalName();
+        $uploaded = [];
 
-        $response = Http::timeout(90)
+        foreach ($request->file('images') as $file) {
+            $path = $file->store('uploads', 'public');
+
+            $uploaded[] = [
+                'path' => asset('storage/' . $path),
+                'filename' => $file->getClientOriginalName(),
+                'server_path' => storage_path('app/public/' . $path)
+            ];
+        }
+
+        session(['ocr_files' => $uploaded, 'selectedFile' => 0]);
+        return redirect()->route('ocr.index');
+    }
+
+    public function extract(Request $request)
+    {
+        $files = session('ocr_files');
+        $selected = $request->selectedFile;
+
+        if (!$files || !isset($files[$selected])) {
+            return redirect()->route('ocr.index');
+        }
+
+        $file = $files[$selected];
+
+        $response = Http::withoutVerifying()
+            ->timeout(90)
             ->asMultipart()
-            ->withOptions(['verify' => false])
             ->post('https://api.ocr.space/parse/image', [
                 ['name' => 'apikey', 'contents' => config('services.ocr.key')],
                 ['name' => 'language', 'contents' => 'eng'],
                 ['name' => 'isOverlayRequired', 'contents' => 'true'],
-                ['name' => 'file', 'contents' => fopen(storage_path('app/public/' . $path), 'r'), 'filename' => $fileName],
+                ['name' => 'file', 'contents' => fopen($file['server_path'], 'r'), 'filename' => $file['filename']],
             ]);
 
         $result = $response->json();
-        $text = $result['ParsedResults'][0]['ParsedText'] ?? '';
-        $lines = $result['ParsedResults'][0]['TextOverlay']['Lines'] ?? [];
+        $parsed = $result['ParsedResults'][0] ?? null;
 
-        // Extract fields automatically
+        if (!$parsed) {
+            return back()->with('error', 'OCR failed.');
+        }
+
+        $text = $parsed['ParsedText'] ?? '';
+        $lines = $parsed['TextOverlay']['Lines'] ?? [];
+
+        // Extract fields smartly
         $extractedFields = [
-            'merchant_name'   => strtok($text, "\n"), // first line
-            'merchant_address' => $this->getMatch('/[a-zA-Z0-9 _.,-]+ u, [0-9.]+/i', $text),
-            'date'            => $this->getMatch('/\d{4}[.\-\/]\d{2}[.\-\/]\d{2}/', $text),
-            'total_amount'    => $this->getMatch('/\b(\d{3,6})\b(?=\s*Ft)/', $text),
-            'currency'        => $this->getMatch('/\b(?:Ft|EUR|USD|INR|GBP)\b/', $text),
+            'merchant_name' => strtok($text, "\n"),
+            'date' => $this->getMatch('/\d{4}[-\/.]\d{2}[-\/.]\d{2}/', $text),
+            'phone' => $this->getMatch('/\+?[0-9\s]{8,15}/', $text),
+            'email' => $this->getMatch('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', $text),
+            'total_amount' => $this->getMatch('/\b(\d+(\.\d{1,2})?)\s?(INR|USD|EUR)?/i', $text),
         ];
 
-        // Extract line items (anything with multiple words and alphabetic)
-        // Extract line items with item name + amount
+        // Line items
         $lineItems = [];
-
         foreach ($lines as $line) {
-            $textLine = $line['LineText'] ?? ''; // actual text string
-
+            $textLine = $line['LineText'] ?? '';
             if (preg_match('/^(.*?)(\d+(?:\.\d{1,2})?)$/', trim($textLine), $m)) {
-                $itemName = trim($m[1]);
-                $amount = trim($m[2]);
-
-                if (strlen($itemName) < 3) continue;
+                if (strlen(trim($m[1])) < 3) continue;
 
                 $lineItems[] = [
-                    'item'   => $itemName,
-                    'qty'    => 1,
-                    'type'   => 'Normal',
-                    'amount' => $amount,
+                    'item' => trim($m[1]),
+                    'qty' => 1,
+                    'type' => 'Normal',
+                    'amount' => trim($m[2]),
                 ];
             }
         }
 
-
-
-        return view('ocr', [
+        // Save everything to session
+        session([
             'text' => $text,
-            'raw' => $result,
-            'uploadedImage' => $uploadedImage,
-            'fileName' => $fileName,
+            'raw'  => $result,
             'extractedFields' => $extractedFields,
             'lineItems' => $lineItems,
+            'selectedFile' => $selected,
         ]);
+
+        return redirect()->route('ocr.index');
     }
+
+
 
     private function getMatch($pattern, $text)
     {
