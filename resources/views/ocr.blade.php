@@ -44,9 +44,9 @@
 
             {{-- BUTTONS --}}
             <div class="flex gap-2 items-center mb-4">
-                <form action="{{ route('ocr.extract') }}" method="POST">
+                <form id="extractForm" action="{{ route('ocr.extract') }}" method="POST">
                     @csrf
-                    <input type="hidden" name="selectedFile" value="{{ $selected }}">
+                    <input type="hidden" id="selectedFileInput" name="selectedFile" value="{{ $selected }}">
 
                     <button type="submit"
                         class="px-3 py-[6px] rounded-full bg-black text-white text-[13px] font-semibold">
@@ -60,6 +60,7 @@
                 </button>
             </div>
 
+
             {{-- EXTRACTED FIELDS --}}
             @include('components.ocr.fields', ['extractedFields' => $extractedFields ?? []])
 
@@ -70,6 +71,38 @@
             <div id="jsonBox" class="hidden">
                 @include('components.ocr.raw')
             </div>
+
+            {{-- FINAL ACTION BUTTONS --}}
+            <div class="flex justify-center gap-3 mt-6 pb-6 w-full">
+
+                @php
+                $isExtractRoute = request()->routeIs('ocr.extract');
+                @endphp
+
+                <form id="approveForm" action="{{ route('ocr.approve') }}" method="POST" class="w-full">
+                    @csrf
+                    <input type="hidden" name="selectedFile" value="{{ $selected }}">
+
+                    <button type="submit"
+                        class="w-full py-2 font-semibold text-[15px] rounded-md transition
+            {{ $isExtractRoute
+                ? 'bg-black text-white cursor-pointer hover:bg-gray-900'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed' }}">
+                        ✓ Approve File
+                    </button>
+                </form>
+
+                <button onclick="rejectFile()"
+                    class="w-full py-2 font-semibold text-[15px] rounded-md transition
+        {{ $isExtractRoute
+            ? 'bg-red-100 text-red-600 cursor-pointer hover:bg-red-200'
+            : 'bg-gray-200 text-gray-500 cursor-not-allowed' }}">
+                    ✗ Reject File
+                </button>
+
+            </div>
+
+
 
         </section>
 
@@ -165,6 +198,37 @@
         }
     </script>
 
+    <script>
+        function rejectFile() {
+            // Clear extracted field boxes
+            document.querySelectorAll(".extract-field-input").forEach(input => input.value = "");
+
+            // Remove line items if any
+            const table = document.getElementById("lineItemsTable");
+            if (table) table.innerHTML = "";
+
+            // Remove overlay / preview if needed
+            document.getElementById("preview")?.remove();
+            document.getElementById("ocrOverlay")?.remove();
+
+            // Remove active selection badge
+            document.querySelectorAll("#fileList .file-item").forEach(el => {
+                el.classList.remove("selected-item");
+                const badge = el.querySelector(".status-badge");
+                if (badge) {
+                    badge.innerText = "Pending";
+                    badge.classList.remove("bg-green-100", "text-green-600");
+                    badge.classList.add("bg-yellow-100", "text-yellow-600");
+                }
+            });
+
+            // Reset page position for file navigation
+            document.getElementById("positionText").innerText = `0/${remainingFilesCount()}`;
+
+            // Redirect back to OCR page (not extract page)
+            window.location.href = "{{ route('ocr.index') }}";
+        }
+    </script>
 
 </body>
 

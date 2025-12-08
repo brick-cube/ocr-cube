@@ -4,23 +4,19 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use App\Models\OcrFile;
 
 class OcrController extends Controller
 {
     public function index(Request $request)
     {
-        $files = session('ocr_files') ?? [];
-        $selected = $request->selectedFile ?? session('selectedFile') ?? 0;
-
-        session(['selectedFile' => $selected]);
+        $files = OcrFile::all();
+        $selected = $request->selectedFile ?? 0;
 
         return view('ocr', [
-            'uploadedImage' => $files[$selected]['path'] ?? null,
-            'fileName' => $files[$selected]['filename'] ?? null,
-            'text' => session('text'),
-            'extractedFields' => session('extractedFields') ?? [],
-            'lineItems' => session('lineItems') ?? [],
-            'raw' => session('raw') ?? null,
+            'files' => $files,
+            'uploadedImage' => $files[$selected]->path ?? null,
+            'fileName' => $files[$selected]->filename ?? null,
             'selected' => $selected,
         ]);
     }
@@ -31,28 +27,46 @@ class OcrController extends Controller
             'images.*' => 'required|file|mimes:jpg,jpeg,png,bmp,gif,tif,tiff,webp,pdf|max:4096'
         ]);
 
-        $uploaded = [];
+        $savedFiles = [];
 
         foreach ($request->file('images') as $file) {
             $path = $file->store('uploads', 'public');
 
-            $uploaded[] = [
+            $saved = OcrFile::create([
                 'path' => asset('storage/' . $path),
                 'filename' => $file->getClientOriginalName(),
                 'server_path' => storage_path('app/public/' . $path)
-            ];
+            ]);
+
+            $savedFiles[] = $saved;
         }
 
-        session(['ocr_files' => $uploaded, 'selectedFile' => 0]);
         return redirect()->route('ocr.index');
     }
 
+    public function select($index)
+    {
+        $files = OcrFile::all();
+        if (!isset($files[$index])) {
+            return response()->json(['error' => 'File not found'], 404);
+        }
+
+        $file = $files[$index];
+
+        return response()->json([
+            'uploadedImage' => $file->path,
+            'raw' => session('last_ocr_raw') ?? null,
+            'selected' => $index
+        ]);
+    }
+
+
     public function extract(Request $request)
     {
-        $files = session('ocr_files');
+        $files = OcrFile::all();
         $selected = $request->selectedFile;
 
-        if (!$files || !isset($files[$selected])) {
+        if (!isset($files[$selected])) {
             return redirect()->route('ocr.index');
         }
 
@@ -65,7 +79,7 @@ class OcrController extends Controller
                 ['name' => 'apikey', 'contents' => config('services.ocr.key')],
                 ['name' => 'language', 'contents' => 'eng'],
                 ['name' => 'isOverlayRequired', 'contents' => 'true'],
-                ['name' => 'file', 'contents' => fopen($file['server_path'], 'r'), 'filename' => $file['filename']],
+                ['name' => 'file', 'contents' => fopen($file->server_path, 'r'), 'filename' => $file->filename],
             ]);
 
         $result = $response->json();
@@ -86,7 +100,6 @@ class OcrController extends Controller
             'total_amount' => $this->getMatch('/\b(\d+(\.\d{1,2})?)\s?(INR|USD|EUR)?/i', $text),
         ];
 
-        // Line items
         $lineItems = [];
         foreach ($lines as $line) {
             $textLine = $line['LineText'] ?? '';
@@ -102,15 +115,49 @@ class OcrController extends Controller
             }
         }
 
-        session([
+        return view('ocr', [
+            'files' => $files,
+            'uploadedImage' => $file->path,
+            'fileName' => $file->filename,
             'text' => $text,
-            'raw'  => $result,
             'extractedFields' => $extractedFields,
             'lineItems' => $lineItems,
-            'selectedFile' => $selected,
+            'raw' => $result,
+            'selected' => $selected,
         ]);
+    }
 
-        return redirect()->route('ocr.index');
+    public function destroy($id)
+    {
+        $file = OcrFile::find($id);
+
+        if (!$file) {
+            return response()->json(['error' => 'File not found'], 404);
+        }
+
+        if (file_exists($file->server_path)) {
+            unlink($file->server_path);
+        }
+
+        $file->delete();
+
+        return response()->json(['success' => true]);
+    }
+
+    public function approve(Request $request)
+    {
+        $file = OcrFile::find($request->selectedFile);
+
+        echo $file;
+
+        if (!$file) return back()->with('error', 'File not found');
+
+        // Save extracted fields
+        $file->extracted_data = json_encode($request->except('_token', 'selectedFile'));
+        $file->status = 'approved';
+        $file->save();
+
+        return redirect()->route('ocr.index')->with('success', 'File Approved & Data Saved');
     }
 
 

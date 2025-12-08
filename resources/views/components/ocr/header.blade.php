@@ -8,6 +8,12 @@
 
     <div class="flex items-center gap-1 text-[#6d6c6c]">
 
+        <form action="{{ route('logout') }}" method="POST">
+            @csrf
+            <button class="px-2 py-[6px] rounded bg-red-500 text-white text-sm font-semibold">Logout</button>
+        </form>
+
+
         <label class="px-3 py-[6px] rounded-[5px] bg-[#3b2df5] text-white text-[13px] cursor-pointer flex items-center gap-2">
             <i class="fa-solid fa-file text-xs"></i>Upload files
             <form action="{{ route('ocr.upload') }}" method="POST" enctype="multipart/form-data">
