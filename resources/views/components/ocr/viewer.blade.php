@@ -53,7 +53,7 @@
     @endisset
 </section>
 
-{{-- IMAGE UPLOAD + DRAG & DROP --}}
+{{-- IMAGE UPLOAD + DRAG & DROP, --}}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
     const container = document.getElementById("imageContainer");
