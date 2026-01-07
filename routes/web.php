@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\OcrController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TensorLakeController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -25,5 +26,15 @@ Route::post('/ocr/extractImmediately', [OcrController::class, 'extract']);
 Route::post('/ocr/extract', [OcrController::class, 'extract'])->name('ocr.extract');
 Route::delete('/ocr/{id}', [OcrController::class, 'destroy'])->name('ocr.destroy');
 Route::post('/ocr/approve', [OcrController::class, 'approve'])->name('ocr.approve');
+
+//  Test Tensorlake API
+Route::prefix('tl')->group(function () {
+    Route::get('/', [TensorLakeController::class, 'upload_page']);
+    Route::post('/upload', [TensorLakeController::class, 'saveFile']);
+    Route::get('/process', [TensorLakeController::class, 'processFile']);
+    Route::get('/results', [TensorLakeController::class, 'getExtractedResults']);
+
+    Route::post('/tl-wh', [TensorLakeController::class, 'tlWebhook']);
+});
 
 require __DIR__.'/auth.php';
